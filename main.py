@@ -1,5 +1,6 @@
 from src.utils.db import Base, engine
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.users.models import UserModel, RevokedTokenModel, DeletedUserModel
 from src.plans_pricing.models import PlanPricingModel
@@ -19,6 +20,14 @@ from src.analytics.routers import analytics_routes
 Base.metadata.create_all(engine)
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:52221", "http://localhost:3000", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(user_routes, prefix="/api")
 app.include_router(plan_pricing_routes, prefix="/api")
