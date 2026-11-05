@@ -39,21 +39,33 @@ def seed_database():
         # =====================================================================
         # 1. SEED USERS
         # =====================================================================
-        default_pwd_hash = get_hashed_password("password123")
+        admin_pwd_hash = get_hashed_password("Admin@123")
+        customer_pwd_hash = get_hashed_password("password123")
+
+        # Migrate legacy test email if present
+        legacy_saurav = db.query(UserModel).filter(UserModel.email_address == "saurav@testing.com").first()
+        if legacy_saurav:
+            legacy_saurav.email_address = "saurav@subsyra.com"
+            legacy_saurav.full_name = "Saurav Rana"
+            legacy_saurav.hashed_password = customer_pwd_hash
+            db.flush()
+            print("  * Migrated legacy saurav@testing.com -> saurav@subsyra.com")
 
         users_spec = [
             {
                 "email": "admin@subsyra.com",
-                "name": "Admin Director",
+                "name": "Admin User",
                 "mobile": "9876543210",
                 "role": UserRole.ADMIN.value,
+                "hashed_password": admin_pwd_hash,
                 "address": "Subsyra HQ, Tower 4, Bengaluru, India",
             },
             {
-                "email": "saurav@testing.com",
+                "email": "saurav@subsyra.com",
                 "name": "Saurav Rana",
                 "mobile": "9000000000",
                 "role": UserRole.CUSTOMER.value,
+                "hashed_password": customer_pwd_hash,
                 "address": "12 Sector 14, Chandigarh, India",
             },
             {
@@ -128,7 +140,7 @@ def seed_database():
                 user = UserModel(
                     full_name=spec["name"],
                     email_address=spec["email"],
-                    hashed_password=default_pwd_hash,
+                    hashed_password=spec.get("hashed_password", customer_pwd_hash),
                     mobile_number=spec["mobile"],
                     role=spec["role"],
                     address=spec["address"],
@@ -139,8 +151,10 @@ def seed_database():
             else:
                 user.role = spec["role"]
                 user.full_name = spec["name"]
+                if "hashed_password" in spec:
+                    user.hashed_password = spec["hashed_password"]
                 db.flush()
-                print(f"  * Existing User: {spec['name']} ({spec['email']}) [{spec['role']}]")
+                print(f"  * Updated User: {spec['name']} ({spec['email']}) [{spec['role']}]")
             users_by_email[spec["email"]] = user
 
         db.commit()
@@ -259,7 +273,7 @@ def seed_database():
         subs_spec = [
             # 1. Saurav Rana (Customer hero subscriber)
             {
-                "user": users_by_email["saurav@testing.com"],
+                "user": users_by_email["saurav@subsyra.com"],
                 "plan": growth_plan,
                 "status": SubscriptionStatus.ACTIVE.value,
                 "start": now - timedelta(days=11),
@@ -459,7 +473,7 @@ def seed_database():
         # 5. SEED INVOICES
         # =====================================================================
         # 5.1 Historical Invoices for Saurav Rana (Customer Hero)
-        saurav_user = users_by_email["saurav@testing.com"]
+        saurav_user = users_by_email["saurav@subsyra.com"]
         saurav_sub = next(s for s, u, p in created_subs if u.id == saurav_user.id)
         saurav_pay = payments_by_sub.get(saurav_sub.id)
 
