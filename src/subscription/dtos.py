@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, Literal
 from datetime import datetime
 from src.subscription.models import SubscriptionStatus
+from src.plans_pricing.dtos import PlanPricingReadSchema
 
 
 class SubscriptionCreateSchema(BaseModel):
@@ -28,9 +29,30 @@ class SubscriptionReadSchema(BaseModel):
     renewal_retry_count: int = 0
     created_at: datetime
     updated_at: datetime
+    plan: Optional[PlanPricingReadSchema] = None
+    pending_plan: Optional[PlanPricingReadSchema] = None
 
     model_config = {"from_attributes": True}
 
 
 class PlanChangeRequestSchema(BaseModel):
     new_plan_id: int
+
+
+class PlanChangePreviewResponseSchema(BaseModel):
+    subscription_id: int
+    current_plan_id: int
+    current_plan_name: str
+    current_plan_price: int
+    new_plan_id: int
+    new_plan_name: str
+    new_plan_price: int
+    change_type: Literal["UPGRADE", "DOWNGRADE"]
+    effective_immediately: bool
+    days_remaining_in_period: int
+    total_days_in_period: int
+    unused_credit: int
+    new_plan_charge: int
+    net_amount_due: int
+    currency: str
+    effective_date: datetime

@@ -216,11 +216,35 @@ def preview_plan_change(id: int, new_plan_id: int, db: Session, user: UserModel)
         return ApiResponse(
             status=status.HTTP_404_NOT_FOUND, message="Target plan is not available"
         )
+
+    current_plan = (
+        db.query(PlanPricingModel).filter(PlanPricingModel.id == sub.plan_id).first()
+    )
     proration_data = calculate_proration(sub=sub, new_plan=new_plan)
+
+    responseData = {
+        "subscription_id": sub.id,
+        "current_plan_id": sub.plan_id,
+        "current_plan_name": current_plan.name if current_plan else "Current Plan",
+        "current_plan_price": sub.price_amount,
+        "new_plan_id": new_plan.id,
+        "new_plan_name": new_plan.name,
+        "new_plan_price": new_plan.price_amount,
+        "change_type": proration_data["change_type"],
+        "effective_immediately": proration_data["effective_immediately"],
+        "days_remaining_in_period": proration_data.get("days_remaining", 0),
+        "total_days_in_period": proration_data.get("total_days", 30),
+        "unused_credit": proration_data["unused_credit"],
+        "new_plan_charge": proration_data["new_plan_charge"],
+        "net_amount_due": proration_data["net_amount_due"],
+        "currency": sub.currency,
+        "effective_date": proration_data["effective_date"],
+    }
+
     return ApiResponse(
         status=status.HTTP_200_OK,
         message="Plan change preview calculated successfully",
-        data=proration_data,
+        data=responseData,
     )
 
 

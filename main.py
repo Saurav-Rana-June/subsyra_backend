@@ -8,6 +8,7 @@ from src.subscription.models import SubscriptionModel
 from src.payment.models import PaymentModel, WebhookEventModel
 from src.invoices.models import InvoiceModel
 from src.audit_logs.models import AuditLogModel
+from src.inquiries.models import InquiryModel
 
 from src.users.routers import user_routes
 from src.plans_pricing.routers import plan_pricing_routes
@@ -17,6 +18,7 @@ from src.invoices.routers import invoice_routes
 from src.audit_logs.routers import audit_log_routes
 from src.analytics.routers import analytics_routes
 from src.dashboard.routers import dashboard_routes
+from src.inquiries.routers import inquiry_routes
 
 Base.metadata.create_all(engine)
 
@@ -38,3 +40,4 @@ app.include_router(invoice_routes, prefix="/api")
 app.include_router(audit_log_routes, prefix="/api")
 app.include_router(analytics_routes, prefix="/api")
 app.include_router(dashboard_routes, prefix="/api")
+app.include_router(inquiry_routes, prefix="/api")

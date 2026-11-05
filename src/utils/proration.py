@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from src.subscription.models import SubscriptionModel
+from src.subscription.models import SubscriptionModel, SubscriptionStatus
 from src.plans_pricing.models import PlanPricingModel
 
 
@@ -11,7 +11,22 @@ def calculate_proration(
     if now is None:
         now = datetime.now(timezone.utc)
 
-    # If subscription has no active period timestamps (e.g. pending), charge full new plan
+    now_ts = now.replace(tzinfo=timezone.utc) if now.tzinfo is None else now
+
+    # 1. Trialing subscription: no prior cash paid, full target price is due immediately
+    if sub.status == SubscriptionStatus.TRIALING.value:
+        return {
+            "change_type": "UPGRADE",
+            "effective_immediately": True,
+            "unused_credit": 0,
+            "new_plan_charge": new_plan.price_amount,
+            "net_amount_due": new_plan.price_amount,
+            "effective_date": now_ts,
+            "days_remaining": 0,
+            "total_days": 0,
+        }
+
+    # 2. Subscription has no active period timestamps (e.g. pending), charge full new plan
     if not sub.current_period_start or not sub.current_period_end:
         return {
             "change_type": "UPGRADE",
@@ -19,7 +34,9 @@ def calculate_proration(
             "unused_credit": 0,
             "new_plan_charge": new_plan.price_amount,
             "net_amount_due": new_plan.price_amount,
-            "effective_date": now,
+            "effective_date": now_ts,
+            "days_remaining": 0,
+            "total_days": 30,
         }
 
     # Normalize tz-aware / tz-naive datetimes for calculation
@@ -33,10 +50,13 @@ def calculate_proration(
         if sub.current_period_end.tzinfo is None
         else sub.current_period_end
     )
-    now_ts = now.replace(tzinfo=timezone.utc) if now.tzinfo is None else now
+
     total_duration_sec = max(1.0, (end_ts - start_ts).total_seconds())
     remaining_sec = max(0.0, (end_ts - now_ts).total_seconds())
     fraction_remaining = min(1.0, remaining_sec / total_duration_sec)
+
+    days_remaining = max(0, int(remaining_sec // 86400))
+    total_days = max(1, int(total_duration_sec // 86400))
 
     # Downgrade: New plan price is less than current plan price
     if new_plan.price_amount < sub.price_amount:
@@ -47,7 +67,10 @@ def calculate_proration(
             "new_plan_charge": 0,
             "net_amount_due": 0,
             "effective_date": end_ts,  # Takes effect at end of current period
+            "days_remaining": days_remaining,
+            "total_days": total_days,
         }
+
     # Upgrade: Calculate prorated difference
     unused_credit = round(sub.price_amount * fraction_remaining)
     new_plan_charge = round(new_plan.price_amount * fraction_remaining)
@@ -60,4 +83,6 @@ def calculate_proration(
         "new_plan_charge": new_plan_charge,
         "net_amount_due": net_amount_due,
         "effective_date": now_ts,
+        "days_remaining": days_remaining,
+        "total_days": total_days,
     }

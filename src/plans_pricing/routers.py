@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
+from typing import Optional, Literal
 from src.utils.db import get_db
 from src.plans_pricing import controllers
 from src.plans_pricing.dtos import PlanPricingCreateSchema, PlanPricingUpdateSchema
@@ -12,8 +13,13 @@ plan_pricing_routes = APIRouter(prefix="/plans", tags=["Plans & Pricing"])
 
 
 @plan_pricing_routes.get("", status_code=status.HTTP_200_OK)
-def get_active_plans_pricings(db: Session = Depends(get_db)):
-    return controllers.get_active_plans_pricings(db)
+def get_active_plans_pricings(
+    interval: Optional[Literal["month", "year"]] = Query(
+        None, description="Filter plans by billing interval (month or year)"
+    ),
+    db: Session = Depends(get_db),
+):
+    return controllers.get_active_plans_pricings(db=db, interval=interval)
 
 
 @plan_pricing_routes.get("/{id}", status_code=status.HTTP_200_OK)

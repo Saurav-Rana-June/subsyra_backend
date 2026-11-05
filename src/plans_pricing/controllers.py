@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from fastapi import status
+from typing import Optional
 from src.utils.responses import ApiResponse
 from src.plans_pricing.models import PlanPricingModel
 from src.users.models import UserModel
@@ -48,10 +49,16 @@ def create_plan_pricing(body: PlanPricingCreateSchema, db: Session, user: UserMo
     )
 
 
-def get_active_plans_pricings(db: Session):
-    plans = db.query(PlanPricingModel).filter(
+def get_active_plans_pricings(db: Session, interval: Optional[str] = None):
+    query = db.query(PlanPricingModel).filter(
         PlanPricingModel.is_active == True
-    ).all()
+    )
+
+    if interval:
+        query = query.filter(PlanPricingModel.billing_interval == interval)
+
+    # Sort plans ascending by price so Starter -> Growth -> Enterprise
+    plans = query.order_by(PlanPricingModel.price_amount.asc()).all()
 
     responseData = [PlanPricingReadSchema.model_validate(
         p).model_dump() for p in plans]

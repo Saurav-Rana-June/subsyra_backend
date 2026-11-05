@@ -12,7 +12,21 @@ Populates realistic prototype and test data across:
 
 import sys
 import os
+import socket
 from datetime import datetime, timezone, timedelta
+
+# Fallback for Windows DNS intermittent failure with Neon tech domains
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _custom_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    try:
+        return _orig_getaddrinfo(host, port, family, type, proto, flags)
+    except socket.gaierror:
+        if isinstance(host, str) and "neon.tech" in host:
+            return _orig_getaddrinfo("3.14.138.241", port, family, type, proto, flags)
+        raise
+
+socket.getaddrinfo = _custom_getaddrinfo
 
 # Ensure local backend imports resolve properly
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -164,8 +178,8 @@ def seed_database():
         # =====================================================================
         plans_spec = [
             {
-                "name": "Starter Pro",
-                "description": "Essential subscription tier for small projects and growing startups",
+                "name": "Starter Monthly",
+                "description": "For individuals and small teams getting started with recurring billing.",
                 "price_amount": 49900,  # ₹499.00
                 "currency": "INR",
                 "billing_interval": "month",
@@ -173,59 +187,108 @@ def seed_database():
                 "trial_period_days": 14,
                 "is_active": True,
                 "features": {
-                    "max_projects": 5,
-                    "team_members": 2,
-                    "custom_domain": False,
-                    "api_rate_limit": 1000,
+                    "active_subscriptions": "100",
+                    "team_members": "2",
+                    "api_requests": "10,000",
+                    "automated_invoicing": True,
+                    "dunning": False,
+                    "analytics": "Basic",
+                    "support": "24h email",
                 },
             },
             {
-                "name": "Growth Plan",
-                "description": "Designed for scaling businesses with advanced integrations and priority queues",
-                "price_amount": 176882,  # ₹1,768.82
+                "name": "Starter Annual",
+                "description": "For individuals and small teams getting started with recurring billing.",
+                "price_amount": 499000,  # ₹4,990.00
+                "currency": "INR",
+                "billing_interval": "year",
+                "interval_count": 1,
+                "trial_period_days": 14,
+                "is_active": True,
+                "features": {
+                    "active_subscriptions": "100",
+                    "team_members": "2",
+                    "api_requests": "10,000",
+                    "automated_invoicing": True,
+                    "dunning": False,
+                    "analytics": "Basic",
+                    "support": "24h email",
+                },
+            },
+            {
+                "name": "Growth Monthly",
+                "description": "For growing teams that need automation, deeper reporting and faster support.",
+                "price_amount": 149900,  # ₹1,499.00
+                "currency": "INR",
+                "billing_interval": "month",
+                "interval_count": 1,
+                "trial_period_days": 14,
+                "is_active": True,
+                "features": {
+                    "active_subscriptions": "1,000",
+                    "team_members": "10",
+                    "api_requests": "100,000",
+                    "automated_invoicing": True,
+                    "dunning": True,
+                    "analytics": "Advanced",
+                    "support": "4h priority",
+                },
+            },
+            {
+                "name": "Growth Annual",
+                "description": "For growing teams that need automation, deeper reporting and faster support.",
+                "price_amount": 1499000,  # ₹14,990.00
+                "currency": "INR",
+                "billing_interval": "year",
+                "interval_count": 1,
+                "trial_period_days": 14,
+                "is_active": True,
+                "features": {
+                    "active_subscriptions": "1,000",
+                    "team_members": "10",
+                    "api_requests": "100,000",
+                    "automated_invoicing": True,
+                    "dunning": True,
+                    "analytics": "Advanced",
+                    "support": "4h priority",
+                },
+            },
+            {
+                "name": "Enterprise Monthly",
+                "description": "For organisations that need scale, custom rules and a dedicated team.",
+                "price_amount": 499900,  # ₹4,999.00
                 "currency": "INR",
                 "billing_interval": "month",
                 "interval_count": 1,
                 "trial_period_days": 0,
                 "is_active": True,
                 "features": {
-                    "max_projects": 25,
-                    "team_members": 10,
-                    "custom_domain": True,
-                    "api_rate_limit": 10000,
-                },
-            },
-            {
-                "name": "Pro Tier",
-                "description": "Power features with granular role-based permissions and high throughput",
-                "price_amount": 199900,  # ₹1,999.00
-                "currency": "INR",
-                "billing_interval": "month",
-                "interval_count": 1,
-                "trial_period_days": 7,
-                "is_active": True,
-                "features": {
-                    "max_projects": 50,
-                    "team_members": 25,
-                    "custom_domain": True,
-                    "api_rate_limit": 50000,
+                    "active_subscriptions": "Unlimited",
+                    "team_members": "Unlimited",
+                    "api_requests": "Custom",
+                    "automated_invoicing": True,
+                    "dunning": "Custom rules",
+                    "analytics": "Advanced + ARR",
+                    "support": "1h dedicated Slack",
                 },
             },
             {
                 "name": "Enterprise Annual",
-                "description": "Custom enterprise contract with dedicated account manager and 99.99% SLA",
-                "price_amount": 4999900,  # ₹49,999.00
+                "description": "For organisations that need scale, custom rules and a dedicated team.",
+                "price_amount": 4999000,  # ₹49,990.00
                 "currency": "INR",
                 "billing_interval": "year",
                 "interval_count": 1,
                 "trial_period_days": 0,
                 "is_active": True,
                 "features": {
-                    "max_projects": 9999,
-                    "team_members": 999,
-                    "custom_domain": True,
-                    "api_rate_limit": 1000000,
-                    "dedicated_sla": True,
+                    "active_subscriptions": "Unlimited",
+                    "team_members": "Unlimited",
+                    "api_requests": "Custom",
+                    "automated_invoicing": True,
+                    "dunning": "Custom rules",
+                    "analytics": "Advanced + ARR",
+                    "support": "1h dedicated Slack",
                 },
             },
         ]
@@ -247,12 +310,26 @@ def seed_database():
                 )
                 db.add(plan)
                 db.flush()
-                print(f"  + Created Plan: {spec['name']} (₹{spec['price_amount']/100:.2f}/{spec['billing_interval']})")
+                print(f"  + Created Plan: {spec['name']} (INR {spec['price_amount']/100:.2f}/{spec['billing_interval']})")
             else:
-                plans_by_name[spec["name"]] = plan
-                print(f"  * Existing Plan: {spec['name']}")
+                plan.description = spec["description"]
+                plan.price_amount = spec["price_amount"]
+                plan.currency = spec["currency"]
+                plan.billing_interval = spec["billing_interval"]
+                plan.interval_count = spec["interval_count"]
+                plan.trial_period_days = spec["trial_period_days"]
+                plan.is_active = spec["is_active"]
+                plan.features = spec["features"]
+                db.flush()
+                print(f"  * Updated Plan: {spec['name']}")
             plans_by_name[spec["name"]] = plan
 
+        # Deactivate any legacy plans not in the active catalog
+        active_plan_names = [s["name"] for s in plans_spec]
+        legacy_plans = db.query(PlanPricingModel).filter(PlanPricingModel.name.notin_(active_plan_names)).all()
+        for lp in legacy_plans:
+            lp.is_active = False
+            print(f"  - Deactivated legacy plan: {lp.name}")
         db.commit()
 
         # =====================================================================
@@ -265,16 +342,18 @@ def seed_database():
         db.query(SubscriptionModel).delete()
         db.commit()
 
-        starter_plan = plans_by_name["Starter Pro"]
-        growth_plan = plans_by_name["Growth Plan"]
-        pro_plan = plans_by_name["Pro Tier"]
-        enterprise_plan = plans_by_name["Enterprise Annual"]
+        starter_monthly = plans_by_name["Starter Monthly"]
+        starter_annual = plans_by_name["Starter Annual"]
+        growth_monthly = plans_by_name["Growth Monthly"]
+        growth_annual = plans_by_name["Growth Annual"]
+        enterprise_monthly = plans_by_name["Enterprise Monthly"]
+        enterprise_annual = plans_by_name["Enterprise Annual"]
 
         subs_spec = [
             # 1. Saurav Rana (Customer hero subscriber)
             {
                 "user": users_by_email["saurav@subsyra.com"],
-                "plan": growth_plan,
+                "plan": growth_monthly,
                 "status": SubscriptionStatus.ACTIVE.value,
                 "start": now - timedelta(days=11),
                 "end": now + timedelta(days=19),
@@ -285,7 +364,7 @@ def seed_database():
             # 2. Northwind Labs
             {
                 "user": users_by_email["aarav@northwind.example"],
-                "plan": enterprise_plan,
+                "plan": enterprise_annual,
                 "status": SubscriptionStatus.ACTIVE.value,
                 "start": now - timedelta(days=60),
                 "end": now + timedelta(days=305),
@@ -296,7 +375,7 @@ def seed_database():
             # 3. Acme Studio
             {
                 "user": users_by_email["diya@acme-studio.example"],
-                "plan": pro_plan,
+                "plan": growth_annual,
                 "status": SubscriptionStatus.ACTIVE.value,
                 "start": now - timedelta(days=11),
                 "end": now + timedelta(days=19),
@@ -307,7 +386,7 @@ def seed_database():
             # 4. Brightloop Co. (Free trial active)
             {
                 "user": users_by_email["ishita@brightloop.example"],
-                "plan": starter_plan,
+                "plan": starter_monthly,
                 "status": SubscriptionStatus.TRIALING.value,
                 "start": now - timedelta(days=5),
                 "end": now + timedelta(days=9),
@@ -318,7 +397,7 @@ def seed_database():
             # 5. Orbit Health (Past Due grace period)
             {
                 "user": users_by_email["kabir@orbithealth.example"],
-                "plan": pro_plan,
+                "plan": growth_monthly,
                 "status": SubscriptionStatus.PAST_DUE.value,
                 "start": now - timedelta(days=32),
                 "end": now - timedelta(days=2),
@@ -330,7 +409,7 @@ def seed_database():
             # 6. Lumen Media (Cancelled - ends soon)
             {
                 "user": users_by_email["lumen@media.example"],
-                "plan": starter_plan,
+                "plan": starter_monthly,
                 "status": SubscriptionStatus.CANCELLED.value,
                 "start": now - timedelta(days=28),
                 "end": now - timedelta(days=2),
@@ -342,7 +421,7 @@ def seed_database():
             # 7. Pinecrest Retail
             {
                 "user": users_by_email["pinecrest@retail.example"],
-                "plan": growth_plan,
+                "plan": growth_monthly,
                 "status": SubscriptionStatus.ACTIVE.value,
                 "start": now - timedelta(days=15),
                 "end": now + timedelta(days=15),
@@ -353,7 +432,7 @@ def seed_database():
             # 8. Vantage Cloud (Expired)
             {
                 "user": users_by_email["vantage@cloud.example"],
-                "plan": starter_plan,
+                "plan": starter_monthly,
                 "status": SubscriptionStatus.EXPIRED.value,
                 "start": now - timedelta(days=70),
                 "end": now - timedelta(days=40),
@@ -364,7 +443,7 @@ def seed_database():
             # 9. Rohan Verma
             {
                 "user": users_by_email["rohan@startup.example"],
-                "plan": starter_plan,
+                "plan": starter_monthly,
                 "status": SubscriptionStatus.ACTIVE.value,
                 "start": now - timedelta(days=8),
                 "end": now + timedelta(days=22),
@@ -375,7 +454,7 @@ def seed_database():
             # 10. Ananya Gupta (Trialing)
             {
                 "user": users_by_email["ananya@design.example"],
-                "plan": pro_plan,
+                "plan": growth_monthly,
                 "status": SubscriptionStatus.TRIALING.value,
                 "start": now - timedelta(days=2),
                 "end": now + timedelta(days=5),
@@ -555,8 +634,8 @@ def seed_database():
         # =====================================================================
         admin_user = users_by_email["admin@subsyra.com"]
         audit_events = [
-            ("CREATE_PLAN", "PLAN", growth_plan.id, admin_user.id, {"plan_name": "Growth Plan"}),
-            ("ACTIVATE_SUBSCRIPTION", "SUBSCRIPTION", saurav_sub.id, saurav_user.id, {"plan_id": growth_plan.id}),
+            ("CREATE_PLAN", "PLAN", growth_monthly.id, admin_user.id, {"plan_name": "Growth Monthly"}),
+            ("ACTIVATE_SUBSCRIPTION", "SUBSCRIPTION", saurav_sub.id, saurav_user.id, {"plan_id": growth_monthly.id}),
             ("PAYMENT_SUCCESS", "PAYMENT", saurav_pay.id if saurav_pay else 1, saurav_user.id, {"gateway": "RAZORPAY"}),
         ]
         for action, target_type, target_id, actor_id, details in audit_events:
