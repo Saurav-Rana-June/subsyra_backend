@@ -5,6 +5,7 @@ from src.utils.responses import ApiResponse
 from src.plans_pricing.models import PlanPricingModel
 from src.users.models import UserModel
 from src.audit_logs.services import record_audit_log
+from src.utils.redis_cache import redis_cache
 from src.plans_pricing.dtos import (
     PlanPricingCreateSchema,
     PlanPricingReadSchema,
@@ -38,6 +39,10 @@ def create_plan_pricing(body: PlanPricingCreateSchema, db: Session, user: UserMo
 
     db.commit()
     db.refresh(new_plan_pricing)
+
+    # Invalidate cached plans and dashboard across all nodes
+    redis_cache.delete_pattern("plans:*")
+    redis_cache.delete_pattern("dashboard:*")
 
     responseData = PlanPricingReadSchema.model_validate(
         new_plan_pricing).model_dump()
@@ -122,6 +127,10 @@ def update_plan_pricing(id: int, body: PlanPricingUpdateSchema, db: Session, use
     db.commit()
     db.refresh(plan)
 
+    # Invalidate cached plans and dashboard across all nodes
+    redis_cache.delete_pattern("plans:*")
+    redis_cache.delete_pattern("dashboard:*")
+
     responseData = PlanPricingReadSchema.model_validate(plan).model_dump()
     return ApiResponse(
         status=status.HTTP_200_OK,
@@ -159,6 +168,10 @@ def archive_plan_pricing(id: int, db: Session, user: UserModel = None):
 
     db.commit()
     db.refresh(plan)
+
+    # Invalidate cached plans and dashboard across all nodes
+    redis_cache.delete_pattern("plans:*")
+    redis_cache.delete_pattern("dashboard:*")
 
     responseData = PlanPricingReadSchema.model_validate(plan).model_dump()
     return ApiResponse(

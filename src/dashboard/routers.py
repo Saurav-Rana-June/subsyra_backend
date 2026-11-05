@@ -8,11 +8,13 @@ from src.utils.helpers import is_authenticated
 from src.users.models import UserModel
 from src.utils.responses import ApiResponse
 from src.dashboard import controllers
+from src.utils.redis_cache import cache_response, TTL_DASHBOARD
 
 dashboard_routes = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
 @dashboard_routes.get("", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_DASHBOARD, prefix="dashboard", user_scoped=True)
 def get_dashboard(
     period: Optional[str] = Query(
         default="Last 30 Days",
@@ -39,12 +41,7 @@ def get_dashboard(
 ):
     """
     Get aggregated dashboard data tailored to the authenticated user's role.
-    
-    Returns:
-    - **Admin Persona**: Executive financial KPIs (MRR, Active Subscriptions, Churn, Overdue Invoices),
-      all-customer subscription table, and subscription status distribution chart.
-    - **Customer Persona**: Active plan hero badge with next billing date/amount, personal subscription metrics,
-      and user subscription records.
+    Cached in Redis with 60s TTL and auto-purged on subscription or payment events.
     """
     if isinstance(user, ApiResponse):
         return user
@@ -58,4 +55,3 @@ def get_dashboard(
         start_date=start_date,
         end_date=end_date,
     )
-

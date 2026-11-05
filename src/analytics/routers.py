@@ -8,11 +8,13 @@ from src.utils.helpers import is_authenticated
 from src.users.models import UserModel
 from src.utils.responses import ApiResponse
 from src.analytics import controllers
+from src.utils.redis_cache import cache_response, TTL_ANALYTICS
 
 analytics_routes = APIRouter(prefix="/analytics", tags=["Analytics & Reporting"])
 
 
 @analytics_routes.get("/overview", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_ANALYTICS, prefix="analytics:overview", user_scoped=True)
 def get_overview(
     start_date: Optional[datetime] = Query(
         default=None, description="Start date (ISO format)"
@@ -31,6 +33,7 @@ def get_overview(
 
 
 @analytics_routes.get("/subscriptions", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_ANALYTICS, prefix="analytics:subscriptions", user_scoped=True)
 def get_subscriptions(
     start_date: Optional[datetime] = Query(
         default=None, description="Start date (ISO format)"
@@ -49,6 +52,7 @@ def get_subscriptions(
 
 
 @analytics_routes.get("/revenue", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_ANALYTICS, prefix="analytics:revenue", user_scoped=True)
 def get_revenue(
     group_by: Literal["daily", "monthly", "yearly"] = Query(
         default="daily", description="Time aggregation bucket"
@@ -74,6 +78,7 @@ def get_revenue(
 
 
 @analytics_routes.get("/churn", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_ANALYTICS, prefix="analytics:churn", user_scoped=True)
 def get_churn(
     start_date: Optional[datetime] = Query(
         default=None, description="Start date (ISO format)"
@@ -92,6 +97,7 @@ def get_churn(
 
 
 @analytics_routes.get("/payments", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_ANALYTICS, prefix="analytics:payments", user_scoped=True)
 def get_payments(
     start_date: Optional[datetime] = Query(
         default=None, description="Start date (ISO format)"

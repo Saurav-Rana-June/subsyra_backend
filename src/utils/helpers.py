@@ -4,13 +4,13 @@ import calendar
 import jwt
 import hashlib
 from typing import Any, Callable, Dict, Optional, Tuple
-from src.utils import settings
 from datetime import datetime, timedelta, timezone
 from src.utils.responses import ApiResponse
 from sqlalchemy.orm import Session
 from src.utils.db import get_db
 from src.users.models import UserModel, RevokedTokenModel, UserRole
 from src.utils.settings import settings
+from src.utils.redis_cache import redis_cache
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -56,6 +56,14 @@ def is_authenticated(request: Request, db: Session = Depends(get_db)):
     try:
         token = extract_token(request)
 
+        # 1. Fast O(1) Redis check for revoked token
+        if redis_cache.is_token_revoked(token):
+            return ApiResponse(
+                status=status.HTTP_401_UNAUTHORIZED,
+                message="Your token is expired! Please login again."
+            )
+
+        # 2. Database fallback check
         revoked_token = db.query(RevokedTokenModel).filter(
             RevokedTokenModel.token == token).first()
 

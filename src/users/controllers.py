@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from fastapi import status, Request
 from src.utils.responses import ApiResponse
 from src.utils.helpers import get_hashed_password, generate_access_token, verify_password, extract_token
+from src.utils.redis_cache import redis_cache
+from src.utils.settings import settings
 from src.users.models import UserModel, RevokedTokenModel, DeletedUserModel
 from src.users.dtos import UserCreateSchema, UserLoginSchema, UserReadSchema, UserUpdateSchema, UserDeleteSchema
 
@@ -96,6 +98,10 @@ def login_user(body: UserLoginSchema, db: Session):
 
 def logout_user(request: Request, db: Session):
     token = extract_token(request)
+
+    if token:
+        # Revoke token in Redis with TTL expiration matching token validity
+        redis_cache.revoke_token(token, exp_seconds=settings.TOKEN_EXP_TIME * 60)
 
     revoked_token = RevokedTokenModel(token=token)
     db.add(revoked_token)

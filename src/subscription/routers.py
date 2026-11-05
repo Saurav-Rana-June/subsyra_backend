@@ -14,6 +14,7 @@ from src.utils.responses import ApiResponse
 from src.utils.helpers import require_roles
 from src.users.models import UserRole
 from src.utils.subscription_services import process_subscription_renewals
+from src.utils.redis_cache import cache_response, TTL_SUBSCRIPTIONS
 
 subscription_routes = APIRouter(prefix="/subscription", tags=["Subscriptions"])
 
@@ -30,6 +31,7 @@ def create_subscription(
 
 
 @subscription_routes.get("", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_SUBSCRIPTIONS, prefix="subscription", user_scoped=True)
 def get_my_subscriptions(
     db: Session = Depends(get_db), user: UserModel = Depends(is_authenticated)
 ):

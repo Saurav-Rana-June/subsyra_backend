@@ -7,12 +7,13 @@ from src.plans_pricing.dtos import PlanPricingCreateSchema, PlanPricingUpdateSch
 from src.utils.helpers import is_authenticated, require_roles
 from src.users.models import UserModel, UserRole
 from src.utils.responses import ApiResponse
-
+from src.utils.redis_cache import cache_response, TTL_PLANS
 
 plan_pricing_routes = APIRouter(prefix="/plans", tags=["Plans & Pricing"])
 
 
 @plan_pricing_routes.get("", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_PLANS, prefix="plans:list")
 def get_active_plans_pricings(
     interval: Optional[Literal["month", "year"]] = Query(
         None, description="Filter plans by billing interval (month or year)"
@@ -23,6 +24,7 @@ def get_active_plans_pricings(
 
 
 @plan_pricing_routes.get("/{id}", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_PLANS, prefix="plans:single")
 def get_plan_pricing_by_id(id: int, db: Session = Depends(get_db)):
     return controllers.get_plan_pricing_by_id(id, db)
 

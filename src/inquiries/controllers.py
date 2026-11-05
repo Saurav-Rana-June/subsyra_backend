@@ -10,6 +10,7 @@ from src.inquiries.dtos import (
 )
 from src.users.models import UserModel
 from src.audit_logs.services import record_audit_log
+from src.utils.redis_cache import redis_cache
 
 
 def create_inquiry(
@@ -42,6 +43,9 @@ def create_inquiry(
             "monthly_volume": inquiry.monthly_volume,
         },
     )
+
+    # Invalidate cached inquiries
+    redis_cache.delete_pattern("inquiries:*")
 
     response_data = InquiryReadSchema.model_validate(inquiry).model_dump()
 
@@ -99,6 +103,9 @@ def update_inquiry_status(
         details={"old_status": old_status, "new_status": body.status},
     )
 
+    # Invalidate cached inquiries
+    redis_cache.delete_pattern("inquiries:*")
+
     response_data = InquiryReadSchema.model_validate(inquiry).model_dump()
 
     return ApiResponse(
@@ -106,4 +113,3 @@ def update_inquiry_status(
         message=f"Inquiry status updated to {body.status}",
         data=response_data,
     )
-

@@ -16,6 +16,7 @@ from src.utils.payment_services import create_razorpay_order
 from src.payment.models import PaymentModel, PaymentStatus
 from src.utils.settings import settings
 from src.audit_logs.services import record_audit_log
+from src.utils.redis_cache import redis_cache
 
 
 def create_subscription(body: SubscriptionCreateSchema, db: Session, user: UserModel):
@@ -89,6 +90,11 @@ def create_subscription(body: SubscriptionCreateSchema, db: Session, user: UserM
     db.add(new_sub)
     db.commit()
     db.refresh(new_sub)
+
+    # Invalidate cached subscriptions, dashboard, and analytics
+    redis_cache.delete_pattern("subscription:*")
+    redis_cache.delete_pattern("dashboard:*")
+    redis_cache.delete_pattern("analytics:*")
 
     responseData = SubscriptionReadSchema.model_validate(new_sub).model_dump()
 
@@ -182,6 +188,11 @@ def cancel_subscription(id: int, db: Session, user: UserModel):
 
     db.commit()
     db.refresh(sub)
+
+    # Invalidate cached subscriptions, dashboard, and analytics
+    redis_cache.delete_pattern("subscription:*")
+    redis_cache.delete_pattern("dashboard:*")
+    redis_cache.delete_pattern("analytics:*")
 
     responseData = SubscriptionReadSchema.model_validate(sub).model_dump()
 
@@ -308,6 +319,12 @@ def execute_plan_change(
 
         db.commit()
         db.refresh(sub)
+
+        # Invalidate cached subscriptions, dashboard, and analytics
+        redis_cache.delete_pattern("subscription:*")
+        redis_cache.delete_pattern("dashboard:*")
+        redis_cache.delete_pattern("analytics:*")
+
         return ApiResponse(
             status=status.HTTP_200_OK,
             message="Plan downgrade scheduled successfully for the end of the current billing cycle.",
@@ -360,6 +377,11 @@ def execute_plan_change(
         db.commit()
         db.refresh(payment)
 
+        # Invalidate cached subscriptions, dashboard, and analytics
+        redis_cache.delete_pattern("subscription:*")
+        redis_cache.delete_pattern("dashboard:*")
+        redis_cache.delete_pattern("analytics:*")
+
         return ApiResponse(
             status=status.HTTP_200_OK,
             message="Upgrade initiated. Please complete the prorated payment.",
@@ -380,6 +402,12 @@ def execute_plan_change(
         sub.pending_plan_id = None
         db.commit()
         db.refresh(sub)
+
+        # Invalidate cached subscriptions, dashboard, and analytics
+        redis_cache.delete_pattern("subscription:*")
+        redis_cache.delete_pattern("dashboard:*")
+        redis_cache.delete_pattern("analytics:*")
+
         return ApiResponse(
             status=status.HTTP_200_OK,
             message="Plan upgraded immediately at no additional cost.",

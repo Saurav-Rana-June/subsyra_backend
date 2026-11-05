@@ -7,6 +7,7 @@ from src.inquiries.dtos import InquiryCreateSchema, InquiryUpdateStatusSchema
 from src.utils.helpers import require_roles
 from src.users.models import UserModel, UserRole
 from src.utils.responses import ApiResponse
+from src.utils.redis_cache import cache_response, TTL_INQUIRIES
 
 inquiry_routes = APIRouter(prefix="/inquiries", tags=["Enterprise Inquiries"])
 
@@ -20,6 +21,7 @@ def submit_inquiry(
 
 
 @inquiry_routes.get("", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_INQUIRIES, prefix="inquiries:list")
 def get_inquiries(
     status_filter: Optional[str] = Query(None, alias="status"),
     db: Session = Depends(get_db),
@@ -40,4 +42,3 @@ def update_inquiry_status(
     if isinstance(admin, ApiResponse):
         return admin
     return controllers.update_inquiry_status(id=id, body=body, db=db, admin=admin)
-

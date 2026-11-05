@@ -19,10 +19,11 @@ from src.audit_logs.routers import audit_log_routes
 from src.analytics.routers import analytics_routes
 from src.dashboard.routers import dashboard_routes
 from src.inquiries.routers import inquiry_routes
+from src.cache.routers import cache_routes
 
 Base.metadata.create_all(engine)
 
-app = FastAPI()
+app = FastAPI(title="Subsyra API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,3 +42,4 @@ app.include_router(audit_log_routes, prefix="/api")
 app.include_router(analytics_routes, prefix="/api")
 app.include_router(dashboard_routes, prefix="/api")
 app.include_router(inquiry_routes, prefix="/api")
+app.include_router(cache_routes, prefix="/api")
