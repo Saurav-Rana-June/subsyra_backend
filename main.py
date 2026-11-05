@@ -16,6 +16,7 @@ from src.payment.routers import payment_routes
 from src.invoices.routers import invoice_routes
 from src.audit_logs.routers import audit_log_routes
 from src.analytics.routers import analytics_routes
+from src.dashboard.routers import dashboard_routes
 
 Base.metadata.create_all(engine)
 
@@ -36,3 +37,4 @@ app.include_router(payment_routes, prefix="/api")
 app.include_router(invoice_routes, prefix="/api")
 app.include_router(audit_log_routes, prefix="/api")
 app.include_router(analytics_routes, prefix="/api")
+app.include_router(dashboard_routes, prefix="/api")
