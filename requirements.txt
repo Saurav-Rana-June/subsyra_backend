@@ -11,3 +11,5 @@ razorpay
 pyjwt
 pwdlib[argon2]
 httpx
+redis
+fakeredis

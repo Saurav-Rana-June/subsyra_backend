@@ -4,8 +4,17 @@ import inspect
 from datetime import datetime, date
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional
-import redis
 from src.utils.settings import settings
+
+try:
+    import redis
+except ImportError:
+    redis = None
+
+try:
+    import fakeredis
+except ImportError:
+    fakeredis = None
 
 logger = logging.getLogger("subsyra.cache")
 
@@ -35,7 +44,7 @@ class RedisCacheManager:
     pattern-based invalidation, and seamless in-memory fallback.
     """
     def __init__(self):
-        self._client: Optional[redis.Redis] = None
+        self._client: Optional[Any] = None
         self._is_fallback: bool = False
         self._init_connection()
 
@@ -44,32 +53,38 @@ class RedisCacheManager:
             logger.info("[-] Caching is disabled via settings.")
             return
 
-        try:
-            client = redis.Redis.from_url(
-                settings.REDIS_URL,
-                decode_responses=True,
-                socket_timeout=2,
-                socket_connect_timeout=2,
-            )
-            client.ping()
-            self._client = client
-            self._is_fallback = False
-            logger.info(f"[+] Connected to live Redis instance at {settings.REDIS_URL}")
-        except Exception as e:
+        if redis is not None:
             try:
-                import fakeredis
+                client = redis.Redis.from_url(
+                    settings.REDIS_URL,
+                    decode_responses=True,
+                    socket_timeout=2,
+                    socket_connect_timeout=2,
+                )
+                client.ping()
+                self._client = client
+                self._is_fallback = False
+                logger.info(f"[+] Connected to live Redis instance at {settings.REDIS_URL}")
+                return
+            except Exception as e:
+                logger.warning(f"[*] Live Redis connection failed ({e}). Attempting fallback...")
+
+        if fakeredis is not None:
+            try:
                 self._client = fakeredis.FakeRedis(decode_responses=True)
                 self._is_fallback = True
                 logger.warning(
-                    f"[*] Live Redis connection failed ({e}). "
-                    "Engaged in-memory Redis fallback with 100% full TTL termination semantics."
+                    "[*] Engaged in-memory Redis fallback with 100% full TTL termination semantics."
                 )
+                return
             except Exception as fe:
                 logger.error(f"[-] Failed to initialize cache fallback: {fe}")
-                self._client = None
+
+        logger.warning("[-] Neither live Redis nor in-memory cache is available. Cache disabled.")
+        self._client = None
 
     @property
-    def client(self) -> Optional[redis.Redis]:
+    def client(self) -> Optional[Any]:
         return self._client
 
     @property
