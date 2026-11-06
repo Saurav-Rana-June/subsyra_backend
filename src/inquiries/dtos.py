@@ -1,11 +1,11 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from datetime import datetime
 
 
 class InquiryCreateSchema(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255)
-    email: EmailStr
+    email: str = Field(..., min_length=5, max_length=255)
     company_name: Optional[str] = Field(default=None, max_length=255)
     monthly_volume: Optional[str] = Field(default=None, max_length=100)
     message: Optional[str] = Field(default=None, max_length=5000)
@@ -27,4 +27,3 @@ class InquiryReadSchema(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
-

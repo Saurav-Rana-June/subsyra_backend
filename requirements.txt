@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-pydantic
+pydantic[email]
 pydantic-settings
 python-dotenv
 sqlalchemy
@@ -13,3 +13,5 @@ pwdlib[argon2]
 httpx
 redis
 fakeredis
+email-validator
+python-multipart
