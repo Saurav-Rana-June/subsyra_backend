@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
@@ -219,6 +220,38 @@ def verify_payment(body: PaymentVerifySchema, db: Session, user: UserModel):
             "current_period_start": sub.current_period_start,
             "current_period_end": sub.current_period_end,
         },
+    )
+
+
+def get_all_payments(
+    db: Session,
+    user: UserModel,
+    subscription_id: Optional[int] = None,
+    payment_status: Optional[str] = None,
+    user_id: Optional[int] = None,
+):
+    query = db.query(PaymentModel)
+    if user.role == UserRole.ADMIN.value:
+        if user_id is not None:
+            query = query.filter(PaymentModel.user_id == user_id)
+    else:
+        query = query.filter(PaymentModel.user_id == user.id)
+
+    if subscription_id is not None:
+        query = query.filter(PaymentModel.subscription_id == subscription_id)
+
+    if payment_status:
+        query = query.filter(PaymentModel.status == payment_status.upper())
+
+    payments = query.order_by(PaymentModel.id.desc()).all()
+    responseData = [
+        PaymentReadSchema.model_validate(p).model_dump() for p in payments
+    ]
+
+    return ApiResponse(
+        status=status.HTTP_200_OK,
+        message="Payments fetched successfully",
+        data=responseData,
     )
 
 

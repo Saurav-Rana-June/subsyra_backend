@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
 from fastapi import status
@@ -105,18 +106,48 @@ def create_subscription(body: SubscriptionCreateSchema, db: Session, user: UserM
     )
 
 
-def get_my_subscriptions(db: Session, user: UserModel):
-    my_subs = (
-        db.query(SubscriptionModel).filter(SubscriptionModel.user_id == user.id).all()
-    )
+def get_my_subscriptions(
+    db: Session,
+    user: UserModel,
+    sub_status: Optional[str] = None,
+    user_id: Optional[int] = None,
+    search: Optional[str] = None,
+    all_users: Optional[bool] = False,
+):
+    query = db.query(SubscriptionModel)
+
+    if user.role == UserRole.ADMIN.value:
+        if user_id is not None:
+            query = query.filter(SubscriptionModel.user_id == user_id)
+        elif not all_users:
+            query = query.filter(SubscriptionModel.user_id == user.id)
+    else:
+        query = query.filter(SubscriptionModel.user_id == user.id)
+
+    if sub_status:
+        query = query.filter(SubscriptionModel.status == sub_status.upper())
+
+    if search:
+        search_filter = f"%{search}%"
+        query = (
+            query.join(SubscriptionModel.plan)
+            .join(SubscriptionModel.user)
+            .filter(
+                (PlanPricingModel.name.ilike(search_filter))
+                | (UserModel.full_name.ilike(search_filter))
+                | (UserModel.email_address.ilike(search_filter))
+            )
+        )
+
+    subs = query.order_by(SubscriptionModel.id.desc()).all()
 
     responseData = [
-        SubscriptionReadSchema.model_validate(sub).model_dump() for sub in my_subs
+        SubscriptionReadSchema.model_validate(sub).model_dump() for sub in subs
     ]
 
     return ApiResponse(
         status=status.HTTP_200_OK,
-        message="All subscriptions fetched sucessfully",
+        message="Subscriptions fetched successfully",
         data=responseData,
     )
 
@@ -413,3 +444,213 @@ def execute_plan_change(
             message="Plan upgraded immediately at no additional cost.",
             data={"subscription_id": sub.id, "plan_id": sub.plan_id},
         )
+
+
+def pause_subscription(id: int, db: Session, user: UserModel):
+    sub = db.query(SubscriptionModel).filter(SubscriptionModel.id == id).first()
+    if not sub:
+        return ApiResponse(
+            status=status.HTTP_404_NOT_FOUND, message="Subscription not found"
+        )
+
+    if sub.user_id != user.id and user.role != UserRole.ADMIN.value:
+        return ApiResponse(
+            status=status.HTTP_403_FORBIDDEN,
+            message="You do not have permission to pause this subscription.",
+        )
+
+    if sub.status == SubscriptionStatus.PAUSED.value:
+        return ApiResponse(
+            status=status.HTTP_400_BAD_REQUEST,
+            message="Subscription is already paused.",
+        )
+
+    if sub.status not in [
+        SubscriptionStatus.ACTIVE.value,
+        SubscriptionStatus.TRIALING.value,
+    ]:
+        return ApiResponse(
+            status=status.HTTP_400_BAD_REQUEST,
+            message=f"Cannot pause a subscription in {sub.status} state. Only active or trialing subscriptions can be paused.",
+        )
+
+    previous_status = sub.status
+    sub.status = SubscriptionStatus.PAUSED.value
+
+    record_audit_log(
+        db=db,
+        action="PAUSE_SUBSCRIPTION",
+        target_type="SUBSCRIPTION",
+        target_id=sub.id,
+        user_id=user.id,
+        details={"previous_status": previous_status, "status": sub.status},
+    )
+
+    db.commit()
+    db.refresh(sub)
+
+    # Invalidate cached subscriptions, dashboard, and analytics
+    redis_cache.delete_pattern("subscription:*")
+    redis_cache.delete_pattern("dashboard:*")
+    redis_cache.delete_pattern("analytics:*")
+
+    responseData = SubscriptionReadSchema.model_validate(sub).model_dump()
+    return ApiResponse(
+        status=status.HTTP_200_OK,
+        message="Subscription paused successfully. Recurring billing and renewals are suspended.",
+        data=responseData,
+    )
+
+
+def resume_subscription(id: int, db: Session, user: UserModel):
+    sub = db.query(SubscriptionModel).filter(SubscriptionModel.id == id).first()
+    if not sub:
+        return ApiResponse(
+            status=status.HTTP_404_NOT_FOUND, message="Subscription not found"
+        )
+
+    if sub.user_id != user.id and user.role != UserRole.ADMIN.value:
+        return ApiResponse(
+            status=status.HTTP_403_FORBIDDEN,
+            message="You do not have permission to resume this subscription.",
+        )
+
+    if sub.status != SubscriptionStatus.PAUSED.value:
+        return ApiResponse(
+            status=status.HTTP_400_BAD_REQUEST,
+            message="Only paused subscriptions can be resumed.",
+        )
+
+    sub.status = SubscriptionStatus.ACTIVE.value
+
+    record_audit_log(
+        db=db,
+        action="RESUME_SUBSCRIPTION",
+        target_type="SUBSCRIPTION",
+        target_id=sub.id,
+        user_id=user.id,
+        details={"previous_status": "PAUSED", "status": sub.status},
+    )
+
+    db.commit()
+    db.refresh(sub)
+
+    # Invalidate cached subscriptions, dashboard, and analytics
+    redis_cache.delete_pattern("subscription:*")
+    redis_cache.delete_pattern("dashboard:*")
+    redis_cache.delete_pattern("analytics:*")
+
+    responseData = SubscriptionReadSchema.model_validate(sub).model_dump()
+    return ApiResponse(
+        status=status.HTTP_200_OK,
+        message="Subscription resumed successfully. Recurring billing has been restored.",
+        data=responseData,
+    )
+
+
+def cancel_downgrade(id: int, db: Session, user: UserModel):
+    sub = db.query(SubscriptionModel).filter(SubscriptionModel.id == id).first()
+    if not sub:
+        return ApiResponse(
+            status=status.HTTP_404_NOT_FOUND, message="Subscription not found"
+        )
+
+    if sub.user_id != user.id and user.role != UserRole.ADMIN.value:
+        return ApiResponse(
+            status=status.HTTP_403_FORBIDDEN,
+            message="You do not have permission to modify this subscription.",
+        )
+
+    if not sub.pending_plan_id:
+        return ApiResponse(
+            status=status.HTTP_400_BAD_REQUEST,
+            message="No scheduled plan downgrade found for this subscription.",
+        )
+
+    cancelled_pending_id = sub.pending_plan_id
+    sub.pending_plan_id = None
+
+    record_audit_log(
+        db=db,
+        action="CANCEL_PLAN_DOWNGRADE",
+        target_type="SUBSCRIPTION",
+        target_id=sub.id,
+        user_id=user.id,
+        details={"cancelled_pending_plan_id": cancelled_pending_id},
+    )
+
+    db.commit()
+    db.refresh(sub)
+
+    # Invalidate cached subscriptions, dashboard, and analytics
+    redis_cache.delete_pattern("subscription:*")
+    redis_cache.delete_pattern("dashboard:*")
+    redis_cache.delete_pattern("analytics:*")
+
+    responseData = SubscriptionReadSchema.model_validate(sub).model_dump()
+    return ApiResponse(
+        status=status.HTTP_200_OK,
+        message="Scheduled downgrade cancelled. You will continue on your current plan.",
+        data=responseData,
+    )
+
+
+def reactivate_subscription(id: int, db: Session, user: UserModel):
+    sub = db.query(SubscriptionModel).filter(SubscriptionModel.id == id).first()
+    if not sub:
+        return ApiResponse(
+            status=status.HTTP_404_NOT_FOUND, message="Subscription not found"
+        )
+
+    if sub.user_id != user.id and user.role != UserRole.ADMIN.value:
+        return ApiResponse(
+            status=status.HTTP_403_FORBIDDEN,
+            message="You do not have permission to reactivate this subscription.",
+        )
+
+    if not sub.cancel_at_period_end and sub.status != SubscriptionStatus.CANCELLED.value:
+        return ApiResponse(
+            status=status.HTTP_400_BAD_REQUEST,
+            message="Subscription is not pending cancellation or cancelled.",
+        )
+
+    now = datetime.now(timezone.utc)
+    if sub.current_period_end:
+        period_end = (
+            sub.current_period_end.replace(tzinfo=timezone.utc)
+            if sub.current_period_end.tzinfo is None
+            else sub.current_period_end
+        )
+        if period_end < now:
+            return ApiResponse(
+                status=status.HTTP_400_BAD_REQUEST,
+                message="Subscription billing period has already ended. Please create a new subscription.",
+            )
+
+    sub.cancel_at_period_end = False
+    sub.cancelled_at = None
+    sub.status = SubscriptionStatus.ACTIVE.value
+
+    record_audit_log(
+        db=db,
+        action="REACTIVATE_SUBSCRIPTION",
+        target_type="SUBSCRIPTION",
+        target_id=sub.id,
+        user_id=user.id,
+        details={"status": sub.status, "cancel_at_period_end": False},
+    )
+
+    db.commit()
+    db.refresh(sub)
+
+    # Invalidate cached subscriptions, dashboard, and analytics
+    redis_cache.delete_pattern("subscription:*")
+    redis_cache.delete_pattern("dashboard:*")
+    redis_cache.delete_pattern("analytics:*")
+
+    responseData = SubscriptionReadSchema.model_validate(sub).model_dump()
+    return ApiResponse(
+        status=status.HTTP_200_OK,
+        message="Subscription reactivated successfully. Auto-renewal has been re-enabled.",
+        data=responseData,
+    )

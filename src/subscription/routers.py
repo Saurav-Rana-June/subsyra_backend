@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, status
+from typing import Optional
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from src.utils.db import get_db
 from src.utils.helpers import is_authenticated, require_roles
@@ -33,11 +34,23 @@ def create_subscription(
 @subscription_routes.get("", status_code=status.HTTP_200_OK)
 @cache_response(ttl=TTL_SUBSCRIPTIONS, prefix="subscription", user_scoped=True)
 def get_my_subscriptions(
-    db: Session = Depends(get_db), user: UserModel = Depends(is_authenticated)
+    status: Optional[str] = Query(None, description="Filter by status (ACTIVE, TRIALING, PAST_DUE, PAUSED, CANCELLED, EXPIRED)"),
+    user_id: Optional[int] = Query(None, description="Filter by customer / user ID (Admin only)"),
+    search: Optional[str] = Query(None, description="Search by plan name, customer name, or customer email"),
+    all_users: Optional[bool] = Query(False, description="When true, allows admin to fetch subscriptions across all customers"),
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(is_authenticated),
 ):
     if isinstance(user, ApiResponse):
         return user
-    return controllers.get_my_subscriptions(db=db, user=user)
+    return controllers.get_my_subscriptions(
+        db=db,
+        user=user,
+        sub_status=status,
+        user_id=user_id,
+        search=search,
+        all_users=all_users,
+    )
 
 
 @subscription_routes.get("/{id}", status_code=status.HTTP_200_OK)
@@ -98,3 +111,47 @@ def change_plan(
     if isinstance(user, ApiResponse):
         return user
     return controllers.execute_plan_change(id=id, body=body, db=db, user=user)
+
+
+@subscription_routes.post("/{id}/pause", status_code=status.HTTP_200_OK)
+def pause_subscription(
+    id: int,
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(is_authenticated),
+):
+    if isinstance(user, ApiResponse):
+        return user
+    return controllers.pause_subscription(id=id, db=db, user=user)
+
+
+@subscription_routes.post("/{id}/resume", status_code=status.HTTP_200_OK)
+def resume_subscription(
+    id: int,
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(is_authenticated),
+):
+    if isinstance(user, ApiResponse):
+        return user
+    return controllers.resume_subscription(id=id, db=db, user=user)
+
+
+@subscription_routes.post("/{id}/cancel-downgrade", status_code=status.HTTP_200_OK)
+def cancel_downgrade(
+    id: int,
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(is_authenticated),
+):
+    if isinstance(user, ApiResponse):
+        return user
+    return controllers.cancel_downgrade(id=id, db=db, user=user)
+
+
+@subscription_routes.post("/{id}/reactivate", status_code=status.HTTP_200_OK)
+def reactivate_subscription(
+    id: int,
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(is_authenticated),
+):
+    if isinstance(user, ApiResponse):
+        return user
+    return controllers.reactivate_subscription(id=id, db=db, user=user)

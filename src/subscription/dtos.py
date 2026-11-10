@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, Literal
 from datetime import datetime
 from src.subscription.models import SubscriptionStatus
 from src.plans_pricing.dtos import PlanPricingReadSchema
+from src.users.dtos import UserReadSchema
 
 
 class SubscriptionCreateSchema(BaseModel):
@@ -31,6 +32,7 @@ class SubscriptionReadSchema(BaseModel):
     updated_at: datetime
     plan: Optional[PlanPricingReadSchema] = None
     pending_plan: Optional[PlanPricingReadSchema] = None
+    user: Optional[UserReadSchema] = None
 
     model_config = {"from_attributes": True}
 

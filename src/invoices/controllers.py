@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy.orm import Session
 from fastapi import status
 from src.utils.responses import ApiResponse
@@ -6,10 +7,21 @@ from src.invoices.models import InvoiceModel
 from src.invoices.dtos import InvoiceReadSchema
 
 
-def get_all_invoices(db: Session, user: UserModel):
+def get_all_invoices(
+    db: Session,
+    user: UserModel,
+    subscription_id: Optional[int] = None,
+    invoice_status: Optional[str] = None,
+):
     query = db.query(InvoiceModel)
     if user.role != UserRole.ADMIN.value:
         query = query.filter(InvoiceModel.user_id == user.id)
+
+    if subscription_id is not None:
+        query = query.filter(InvoiceModel.subscription_id == subscription_id)
+
+    if invoice_status:
+        query = query.filter(InvoiceModel.status == invoice_status.upper())
 
     invoices = query.order_by(InvoiceModel.id.desc()).all()
     responseData = [

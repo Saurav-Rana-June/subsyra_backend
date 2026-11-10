@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, status
+from typing import Optional
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from src.utils.db import get_db
 from src.utils.helpers import is_authenticated
@@ -11,12 +12,19 @@ invoice_routes = APIRouter(prefix="/invoices", tags=["Invoices"])
 
 @invoice_routes.get("", status_code=status.HTTP_200_OK)
 def list_invoices(
+    subscription_id: Optional[int] = Query(None, description="Filter invoices by subscription ID"),
+    invoice_status: Optional[str] = Query(None, alias="status", description="Filter invoices by status (PAID, PENDING, FAILED)"),
     db: Session = Depends(get_db),
     user: UserModel = Depends(is_authenticated),
 ):
     if isinstance(user, ApiResponse):
         return user
-    return controllers.get_all_invoices(db=db, user=user)
+    return controllers.get_all_invoices(
+        db=db,
+        user=user,
+        subscription_id=subscription_id,
+        invoice_status=invoice_status,
+    )
 
 
 @invoice_routes.get("/{id}", status_code=status.HTTP_200_OK)
