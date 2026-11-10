@@ -1,10 +1,10 @@
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
 from fastapi import status
 from src.utils.responses import ApiResponse
 from src.users.models import UserModel, UserRole
-from src.subscription.models import SubscriptionModel
+from src.subscription.models import SubscriptionModel, SubscriptionPaymentMethodModel
 from src.plans_pricing.models import PlanPricingModel
 from src.utils.proration import calculate_proration
 from src.subscription.dtos import (
@@ -12,9 +12,17 @@ from src.subscription.dtos import (
     SubscriptionCreateSchema,
     SubscriptionReadSchema,
     PlanChangeRequestSchema,
+    PaymentMethodUpdateSchema,
+    PaymentMethodReadSchema,
+    SubscriptionActivityItemSchema,
+    SubscriptionDetailsReadSchema,
 )
 from src.utils.payment_services import create_razorpay_order
 from src.payment.models import PaymentModel, PaymentStatus
+from src.payment.dtos import PaymentReadSchema
+from src.invoices.models import InvoiceModel
+from src.invoices.dtos import InvoiceReadSchema
+from src.audit_logs.models import AuditLogModel
 from src.utils.settings import settings
 from src.audit_logs.services import record_audit_log
 from src.utils.redis_cache import redis_cache
@@ -91,6 +99,15 @@ def create_subscription(body: SubscriptionCreateSchema, db: Session, user: UserM
     db.add(new_sub)
     db.commit()
     db.refresh(new_sub)
+
+    record_audit_log(
+        db=db,
+        action="CREATE_SUBSCRIPTION",
+        target_type="SUBSCRIPTION",
+        target_id=new_sub.id,
+        user_id=user.id,
+        details={"plan_id": plan.id, "plan_name": plan.name, "status": new_sub.status},
+    )
 
     # Invalidate cached subscriptions, dashboard, and analytics
     redis_cache.delete_pattern("subscription:*")
@@ -653,4 +670,302 @@ def reactivate_subscription(id: int, db: Session, user: UserModel):
         status=status.HTTP_200_OK,
         message="Subscription reactivated successfully. Auto-renewal has been re-enabled.",
         data=responseData,
+    )
+
+
+_AUDIT_ACTION_META = {
+    "CREATE_SUBSCRIPTION": (
+        "Subscription created",
+        "Subscription initialized.",
+        "neutral",
+    ),
+    "CANCEL_SUBSCRIPTION": (
+        "Cancellation scheduled",
+        "Subscription will cancel at the end of the current cycle.",
+        "danger",
+    ),
+    "SCHEDULE_PLAN_DOWNGRADE": (
+        "Downgrade scheduled",
+        "Plan change scheduled for the end of this billing cycle.",
+        "warning",
+    ),
+    "INITIATE_PLAN_UPGRADE": (
+        "Plan upgrade initiated",
+        "Prorated upgrade checkout initiated.",
+        "info",
+    ),
+    "PAUSE_SUBSCRIPTION": (
+        "Subscription paused",
+        "Recurring billing and renewals suspended.",
+        "warning",
+    ),
+    "RESUME_SUBSCRIPTION": (
+        "Subscription resumed",
+        "Recurring billing and active access restored.",
+        "success",
+    ),
+    "CANCEL_PLAN_DOWNGRADE": (
+        "Downgrade cancelled",
+        "Scheduled downgrade cancelled; current plan retained.",
+        "info",
+    ),
+    "REACTIVATE_SUBSCRIPTION": (
+        "Subscription reactivated",
+        "Auto-renewal re-enabled for the active cycle.",
+        "success",
+    ),
+    "UPDATE_PAYMENT_METHOD": (
+        "Payment method updated",
+        "Default payment method updated.",
+        "info",
+    ),
+}
+
+
+def _format_inr(amount_paise: int) -> str:
+    rupees = amount_paise // 100
+    return f"₹{rupees:,}"
+
+
+def _build_subscription_activity(
+    sub: SubscriptionModel,
+    db: Session,
+    invoices: Optional[List[InvoiceModel]] = None,
+) -> List[SubscriptionActivityItemSchema]:
+    events: List[SubscriptionActivityItemSchema] = []
+
+    audit_rows = (
+        db.query(AuditLogModel)
+        .filter(
+            AuditLogModel.target_type == "SUBSCRIPTION",
+            AuditLogModel.target_id == sub.id,
+        )
+        .order_by(AuditLogModel.created_at.desc())
+        .all()
+    )
+
+    has_create_audit = False
+    for log in audit_rows:
+        if log.action == "CREATE_SUBSCRIPTION":
+            has_create_audit = True
+        default_title, default_desc, variant = _AUDIT_ACTION_META.get(
+            log.action,
+            (log.action.replace("_", " ").title(), "Subscription updated.", "neutral"),
+        )
+        details = log.details or {}
+        description = default_desc
+        if log.action == "CREATE_SUBSCRIPTION" and details.get("plan_name"):
+            description = f"Started on the {details['plan_name']} plan."
+        elif log.action == "UPDATE_PAYMENT_METHOD" and details.get("label"):
+            description = f"Updated payment method to {details['label']}."
+
+        events.append(
+            SubscriptionActivityItemSchema(
+                id=f"audit_{log.id}",
+                action=log.action,
+                title=default_title,
+                description=description,
+                timestamp=log.created_at,
+                variant=variant,
+            )
+        )
+
+    sub_invoices = (
+        invoices
+        if invoices is not None
+        else db.query(InvoiceModel)
+        .filter(InvoiceModel.subscription_id == sub.id)
+        .order_by(InvoiceModel.created_at.desc())
+        .all()
+    )
+    for inv in sub_invoices:
+        reason = (inv.billing_reason or "").upper()
+        if reason == "SUBSCRIPTION_CYCLE":
+            title = "Subscription renewed"
+        elif reason == "PLAN_UPGRADE":
+            title = "Plan upgraded"
+        else:
+            title = "Subscription activated"
+
+        events.append(
+            SubscriptionActivityItemSchema(
+                id=f"invoice_{inv.id}",
+                action=f"INVOICE_{inv.status}",
+                title=title,
+                description=f"{_format_inr(inv.total_amount)} {inv.status.lower()}, invoice {inv.invoice_number}.",
+                timestamp=inv.paid_at or inv.created_at,
+                variant="success" if inv.status == "PAID" else "warning",
+            )
+        )
+
+    if not has_create_audit:
+        plan_name = sub.plan.name if sub.plan else f"Plan #{sub.plan_id}"
+        events.append(
+            SubscriptionActivityItemSchema(
+                id=f"sub_created_{sub.id}",
+                action="CREATE_SUBSCRIPTION",
+                title="Subscription created",
+                description=f"Started on the {plan_name} plan.",
+                timestamp=sub.created_at,
+                variant="neutral",
+            )
+        )
+
+    events.sort(key=lambda e: e.timestamp.replace(tzinfo=timezone.utc) if e.timestamp.tzinfo is None else e.timestamp, reverse=True)
+    return events
+
+
+def _resolve_payment_method(
+    sub: SubscriptionModel,
+    latest_payment: Optional[PaymentModel],
+    db: Session,
+) -> Optional[PaymentMethodReadSchema]:
+    saved = (
+        db.query(SubscriptionPaymentMethodModel)
+        .filter(SubscriptionPaymentMethodModel.subscription_id == sub.id)
+        .first()
+    )
+    if saved:
+        return PaymentMethodReadSchema.model_validate(saved)
+
+    if latest_payment:
+        ref = latest_payment.provider_payment_id or latest_payment.provider_order_id
+        return PaymentMethodReadSchema(
+            method_type=latest_payment.provider,
+            label=f"{latest_payment.provider.title()} ({ref})",
+            last4=None,
+            expiry=None,
+            updated_at=latest_payment.updated_at,
+        )
+
+    return None
+
+
+def get_subscription_activity(id: int, db: Session, user: UserModel):
+    sub = db.query(SubscriptionModel).filter(SubscriptionModel.id == id).first()
+    if not sub:
+        return ApiResponse(
+            status=status.HTTP_404_NOT_FOUND, message="Subscription not found"
+        )
+
+    if sub.user_id != user.id and user.role != UserRole.ADMIN.value:
+        return ApiResponse(
+            status=status.HTTP_403_FORBIDDEN,
+            message="You do not have permission to view this subscription's activity.",
+        )
+
+    events = _build_subscription_activity(sub=sub, db=db)
+    return ApiResponse(
+        status=status.HTTP_200_OK,
+        message="Subscription activity fetched successfully",
+        data=[e.model_dump() for e in events],
+    )
+
+
+def get_subscription_details(id: int, db: Session, user: UserModel):
+    sub = db.query(SubscriptionModel).filter(SubscriptionModel.id == id).first()
+    if not sub:
+        return ApiResponse(
+            status=status.HTTP_404_NOT_FOUND, message="Subscription not found"
+        )
+
+    if sub.user_id != user.id and user.role != UserRole.ADMIN.value:
+        return ApiResponse(
+            status=status.HTTP_403_FORBIDDEN,
+            message="You do not have permission to access this subscription.",
+        )
+
+    invoices = (
+        db.query(InvoiceModel)
+        .filter(InvoiceModel.subscription_id == sub.id)
+        .order_by(InvoiceModel.id.desc())
+        .all()
+    )
+    latest_payment = (
+        db.query(PaymentModel)
+        .filter(PaymentModel.subscription_id == sub.id)
+        .order_by(PaymentModel.id.desc())
+        .first()
+    )
+    payment_method = _resolve_payment_method(
+        sub=sub, latest_payment=latest_payment, db=db
+    )
+    activity = _build_subscription_activity(sub=sub, db=db, invoices=invoices)
+
+    payload = SubscriptionDetailsReadSchema(
+        subscription=SubscriptionReadSchema.model_validate(sub),
+        invoices=[InvoiceReadSchema.model_validate(inv) for inv in invoices],
+        latest_payment=(
+            PaymentReadSchema.model_validate(latest_payment)
+            if latest_payment
+            else None
+        ),
+        payment_method=payment_method,
+        activity=activity,
+    ).model_dump()
+
+    return ApiResponse(
+        status=status.HTTP_200_OK,
+        message="Subscription details fetched successfully",
+        data=payload,
+    )
+
+
+def update_subscription_payment_method(
+    id: int,
+    body: PaymentMethodUpdateSchema,
+    db: Session,
+    user: UserModel,
+):
+    sub = db.query(SubscriptionModel).filter(SubscriptionModel.id == id).first()
+    if not sub:
+        return ApiResponse(
+            status=status.HTTP_404_NOT_FOUND, message="Subscription not found"
+        )
+
+    if sub.user_id != user.id and user.role != UserRole.ADMIN.value:
+        return ApiResponse(
+            status=status.HTTP_403_FORBIDDEN,
+            message="You do not have permission to update this subscription's payment method.",
+        )
+
+    pm = (
+        db.query(SubscriptionPaymentMethodModel)
+        .filter(SubscriptionPaymentMethodModel.subscription_id == sub.id)
+        .first()
+    )
+    if pm:
+        pm.method_type = body.method_type
+        pm.label = body.label
+        pm.last4 = body.last4
+        pm.expiry = body.expiry
+    else:
+        pm = SubscriptionPaymentMethodModel(
+            subscription_id=sub.id,
+            user_id=sub.user_id,
+            method_type=body.method_type,
+            label=body.label,
+            last4=body.last4,
+            expiry=body.expiry,
+        )
+        db.add(pm)
+
+    record_audit_log(
+        db=db,
+        action="UPDATE_PAYMENT_METHOD",
+        target_type="SUBSCRIPTION",
+        target_id=sub.id,
+        user_id=user.id,
+        details={"method_type": body.method_type, "label": body.label},
+    )
+
+    db.commit()
+    db.refresh(pm)
+
+    redis_cache.delete_pattern("subscription:*")
+
+    return ApiResponse(
+        status=status.HTTP_200_OK,
+        message="Payment method updated successfully",
+        data=PaymentMethodReadSchema.model_validate(pm).model_dump(),
     )

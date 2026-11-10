@@ -40,6 +40,7 @@ def query_audit_logs(
     db: Session,
     action: Optional[str] = None,
     target_type: Optional[str] = None,
+    target_id: Optional[int] = None,
     user_id: Optional[int] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
@@ -55,6 +56,8 @@ def query_audit_logs(
         query = query.filter(AuditLogModel.action == action)
     if target_type:
         query = query.filter(AuditLogModel.target_type == target_type)
+    if target_id is not None:
+        query = query.filter(AuditLogModel.target_id == target_id)
     if user_id:
         query = query.filter(AuditLogModel.user_id == user_id)
     if start_date:

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.users.models import UserModel, RevokedTokenModel, DeletedUserModel
 from src.plans_pricing.models import PlanPricingModel
-from src.subscription.models import SubscriptionModel
+from src.subscription.models import SubscriptionModel, SubscriptionPaymentMethodModel
 from src.payment.models import PaymentModel, WebhookEventModel
 from src.invoices.models import InvoiceModel
 from src.audit_logs.models import AuditLogModel

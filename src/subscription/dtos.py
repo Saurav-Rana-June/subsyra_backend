@@ -1,9 +1,11 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, Literal, List
 from datetime import datetime
 from src.subscription.models import SubscriptionStatus
 from src.plans_pricing.dtos import PlanPricingReadSchema
 from src.users.dtos import UserReadSchema
+from src.invoices.dtos import InvoiceReadSchema
+from src.payment.dtos import PaymentReadSchema
 
 
 class SubscriptionCreateSchema(BaseModel):
@@ -58,3 +60,37 @@ class PlanChangePreviewResponseSchema(BaseModel):
     net_amount_due: int
     currency: str
     effective_date: datetime
+
+
+class PaymentMethodUpdateSchema(BaseModel):
+    method_type: Literal["CARD", "UPI", "NETBANKING", "RAZORPAY"] = "CARD"
+    label: str = Field(..., min_length=2, max_length=120)
+    last4: Optional[str] = Field(default=None, max_length=4)
+    expiry: Optional[str] = Field(default=None, max_length=16)
+
+
+class PaymentMethodReadSchema(BaseModel):
+    method_type: str
+    label: str
+    last4: Optional[str] = None
+    expiry: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SubscriptionActivityItemSchema(BaseModel):
+    id: str
+    action: str
+    title: str
+    description: str
+    timestamp: datetime
+    variant: Literal["info", "success", "warning", "danger", "neutral"] = "neutral"
+
+
+class SubscriptionDetailsReadSchema(BaseModel):
+    subscription: SubscriptionReadSchema
+    invoices: List[InvoiceReadSchema] = []
+    latest_payment: Optional[PaymentReadSchema] = None
+    payment_method: Optional[PaymentMethodReadSchema] = None
+    activity: List[SubscriptionActivityItemSchema] = []

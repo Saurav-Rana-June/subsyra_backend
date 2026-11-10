@@ -10,6 +10,7 @@ from src.subscription.dtos import (
     SubscriptionCreateSchema,
     SubscriptionReadSchema,
     PlanChangeRequestSchema,
+    PaymentMethodUpdateSchema,
 )
 from src.utils.responses import ApiResponse
 from src.utils.helpers import require_roles
@@ -155,3 +156,40 @@ def reactivate_subscription(
     if isinstance(user, ApiResponse):
         return user
     return controllers.reactivate_subscription(id=id, db=db, user=user)
+
+
+@subscription_routes.get("/{id}/details", status_code=status.HTTP_200_OK)
+@cache_response(ttl=TTL_SUBSCRIPTIONS, prefix="subscription", user_scoped=True)
+def get_subscription_details(
+    id: int,
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(is_authenticated),
+):
+    if isinstance(user, ApiResponse):
+        return user
+    return controllers.get_subscription_details(id=id, db=db, user=user)
+
+
+@subscription_routes.get("/{id}/activity", status_code=status.HTTP_200_OK)
+def get_subscription_activity(
+    id: int,
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(is_authenticated),
+):
+    if isinstance(user, ApiResponse):
+        return user
+    return controllers.get_subscription_activity(id=id, db=db, user=user)
+
+
+@subscription_routes.post("/{id}/payment-method", status_code=status.HTTP_200_OK)
+def update_subscription_payment_method(
+    id: int,
+    body: PaymentMethodUpdateSchema,
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(is_authenticated),
+):
+    if isinstance(user, ApiResponse):
+        return user
+    return controllers.update_subscription_payment_method(
+        id=id, body=body, db=db, user=user
+    )

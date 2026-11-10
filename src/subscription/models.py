@@ -57,3 +57,29 @@ class SubscriptionModel(Base):
     user = relationship("UserModel")
     plan = relationship("PlanPricingModel", foreign_keys=[plan_id])
     pending_plan = relationship("PlanPricingModel", foreign_keys=[pending_plan_id])
+
+
+class SubscriptionPaymentMethodModel(Base):
+    __tablename__ = "subscription_payment_methods_table"
+
+    id = Column(Integer, primary_key=True, index=True)
+    subscription_id = Column(
+        Integer, ForeignKey("subscriptions_table.id"), unique=True, nullable=False, index=True
+    )
+    user_id = Column(Integer, ForeignKey("users_table.id"), nullable=False, index=True)
+    method_type = Column(String, default="CARD", nullable=False)
+    label = Column(String, nullable=False)
+    last4 = Column(String(4), nullable=True)
+    expiry = Column(String(16), nullable=True)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    subscription = relationship("SubscriptionModel")
+    user = relationship("UserModel")

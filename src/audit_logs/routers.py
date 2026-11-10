@@ -18,6 +18,9 @@ def get_audit_logs(
     target_type: Optional[str] = Query(
         default=None, description="Filter by target type (SUBSCRIPTION, PAYMENT, etc.)"
     ),
+    target_id: Optional[int] = Query(
+        default=None, description="Filter by target entity ID (e.g. subscription ID)"
+    ),
     user_id: Optional[int] = Query(
         default=None, description="Filter by user / actor ID"
     ),
@@ -40,6 +43,7 @@ def get_audit_logs(
         user=user,
         action=action,
         target_type=target_type,
+        target_id=target_id,
         user_id=user_id,
         start_date=start_date,
         end_date=end_date,
