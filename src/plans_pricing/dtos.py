@@ -1,6 +1,24 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, Literal
 from datetime import datetime
+
+
+def _coerce_features_dict(value: Any) -> Optional[Dict[str, Any]]:
+    """Normalizes legacy list-based plan features into a structured feature dictionary."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        normalized: Dict[str, Any] = {}
+        for idx, item in enumerate(value):
+            if isinstance(item, dict):
+                normalized.update(item)
+            else:
+                key = str(item).strip() or f"feature_{idx + 1}"
+                normalized[key] = True
+        return normalized
+    return None
 
 
 class PlanPricingCreateSchema(BaseModel):
@@ -14,6 +32,11 @@ class PlanPricingCreateSchema(BaseModel):
     interval_count: int = Field(default=1, ge=1)
     features: Optional[Dict[str, Any]] = None
     trial_period_days: Optional[int] = Field(default=0, ge=0)
+
+    @field_validator("features", mode="before")
+    @classmethod
+    def normalize_features(cls, v: Any) -> Optional[Dict[str, Any]]:
+        return _coerce_features_dict(v)
 
 
 class PlanPricingReadSchema(BaseModel):
@@ -31,6 +54,11 @@ class PlanPricingReadSchema(BaseModel):
     updated_at: datetime
     model_config = {"from_attributes": True}
 
+    @field_validator("features", mode="before")
+    @classmethod
+    def normalize_features(cls, v: Any) -> Optional[Dict[str, Any]]:
+        return _coerce_features_dict(v)
+
 
 class PlanPricingUpdateSchema(BaseModel):
     name: Optional[str] = None
@@ -42,3 +70,8 @@ class PlanPricingUpdateSchema(BaseModel):
     features: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
     trial_period_days: Optional[int] = Field(default=None, ge=0)
+
+    @field_validator("features", mode="before")
+    @classmethod
+    def normalize_features(cls, v: Any) -> Optional[Dict[str, Any]]:
+        return _coerce_features_dict(v)
