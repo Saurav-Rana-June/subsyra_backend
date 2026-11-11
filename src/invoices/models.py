@@ -1,5 +1,6 @@
 from enum import Enum
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Optional
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from src.utils.db import Base
@@ -10,6 +11,7 @@ from src.payment.models import PaymentModel
 
 class InvoiceStatus(str, Enum):
     DRAFT = "DRAFT"
+    OPEN = "OPEN"
     PAID = "PAID"
     VOID = "VOID"
     UNCOLLECTIBLE = "UNCOLLECTIBLE"
@@ -47,3 +49,17 @@ class InvoiceModel(Base):
     user = relationship("UserModel")
     subscription = relationship("SubscriptionModel")
     payment = relationship("PaymentModel")
+
+    @property
+    def plan_name(self) -> Optional[str]:
+        if self.subscription and self.subscription.plan:
+            return self.subscription.plan.name
+        return None
+
+    @property
+    def due_date(self) -> Optional[datetime]:
+        if self.paid_at:
+            return self.paid_at
+        if self.created_at:
+            return self.created_at + timedelta(days=7)
+        return None
