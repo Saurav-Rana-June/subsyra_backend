@@ -1,8 +1,17 @@
+import os
 from src.utils.db import Base, engine
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from src.users.models import UserModel, RevokedTokenModel, DeletedUserModel
+from src.users.models import (
+    UserModel,
+    RevokedTokenModel,
+    DeletedUserModel,
+    UserSessionModel,
+    UserRecoveryCodeModel,
+    EmailVerificationTokenModel,
+)
 from src.plans_pricing.models import PlanPricingModel
 from src.subscription.models import SubscriptionModel, SubscriptionPaymentMethodModel
 from src.payment.models import PaymentModel, WebhookEventModel
@@ -33,6 +42,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+os.makedirs("uploads/profile_pictures", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.include_router(user_routes, prefix="/api")
 app.include_router(plan_pricing_routes, prefix="/api")
