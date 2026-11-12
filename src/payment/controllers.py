@@ -34,6 +34,7 @@ from sqlalchemy.exc import IntegrityError
 from src.utils.invoices_services import create_invoice_for_payment
 from src.utils.subscription_services import handle_failed_renewal
 from src.audit_logs.services import record_audit_log
+from src.utils.redis_cache import redis_cache
 
 
 def initiate_checkout(body: PaymentCheckoutRequestSchema, db: Session, user: UserModel):
@@ -209,6 +210,11 @@ def verify_payment(body: PaymentVerifySchema, db: Session, user: UserModel):
     db.commit()
     db.refresh(payment)
     db.refresh(sub)
+
+    # Purge cached subscriptions, dashboard, and analytics so UI refreshes reflect the active/upgraded plan immediately
+    redis_cache.delete_pattern("subscription:*")
+    redis_cache.delete_pattern("dashboard:*")
+    redis_cache.delete_pattern("analytics:*")
 
     return ApiResponse(
         status=status.HTTP_200_OK,
